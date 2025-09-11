@@ -14,9 +14,6 @@ A straightforward SFTP client built using Python's Tkinter for the GUI and Param
 *   **Minimalist Scrollbars:** Scrollbars only appear when content exceeds the visible area.
 *   **Clean Session Management:** New SFTP connections clear the previous browser state (except downloaded files).
 
-## Screenshots
-
-*(You would typically add screenshots here after running the application)*
 
 ## Installation and Setup
 
@@ -34,7 +31,6 @@ A straightforward SFTP client built using Python's Tkinter for the GUI and Param
     git clone https://github.com/crakA2/a-very-simple-sftp-browser.git
     cd a-very-simple-sftp-browser
     ```
-    (Replace `yourusername` with your actual GitHub username if you fork it)
 
 2.  **Install Dependencies:**
     Open your terminal or command prompt and navigate to the directory where you saved the script. Install `paramiko` using pip:
