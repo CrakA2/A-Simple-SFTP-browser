@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\sftp]
+@="URL:SFTP Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\sftp\shell]
+
+[HKEY_CLASSES_ROOT\sftp\shell\open]
+
+[HKEY_CLASSES_ROOT\sftp\shell\open\command]
+@="\"pythonw.exe\" \"e:\\Fedora\\MikoGUI\\sftp_browser.py\" \"%1\""
