@@ -214,7 +214,7 @@ class LoginDialog(ThemedToplevel):
 class SFTPBrowser:
     def __init__(self, root):
         self.root = root
-        self.root.title("SFTP Browser")
+        self.root.title("A Very Simple SFTP Browser")
         self.root.geometry("1000x700")  # Increased size for better layout
         self.root.configure(bg=CATPPUCCIN_PALETTE["mantle"])
 
@@ -363,7 +363,7 @@ class SFTPBrowser:
             bordercolor=CATPPUCCIN_PALETTE["crust"],
             relief="flat",
             borderwidth=0,
-            arrowsize=0, # This effectively hides default arrows, but layout still needs to omit them
+            arrowsize=0, # This hides default arrows if they were present in the layout
         )
         style.map(
             "TScrollbar",
@@ -553,6 +553,7 @@ class SFTPBrowser:
         tree_scroll_x = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=self.tree.xview, style="TScrollbar")
         self.tree.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
 
+        # Scrollbars will only appear when necessary due to Treeview's internal logic
         tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=(0, 10))
         tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X, padx=(10, 0), pady=(0, 10))
         self.tree.pack(fill=tk.BOTH, expand=True, padx=(10, 0), pady=(0, 0)) # Place tree after scrollbars for correct layout
@@ -582,6 +583,7 @@ class SFTPBrowser:
         downloads_tree_scroll_x = ttk.Scrollbar(right_frame, orient=tk.HORIZONTAL, command=self.downloads_tree.xview, style="TScrollbar")
         self.downloads_tree.configure(yscrollcommand=downloads_tree_scroll_y.set, xscrollcommand=downloads_tree_scroll_x.set)
         
+        # Scrollbars will only appear when necessary
         downloads_tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=(0, 10))
         downloads_tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X, padx=(10, 0), pady=(0, 10))
         self.downloads_tree.pack(fill=tk.BOTH, expand=True, padx=(10, 0), pady=(0, 0)) # Place tree after scrollbars
