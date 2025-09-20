@@ -9,223 +9,52 @@ from tkinter import filedialog
 import stat
 import subprocess
 import datetime
+import threading
+import time
+import platform
+import sv_ttk
 
-# Catppuccin Macchiato palette
-CATPPUCCIN_PALETTE = {
-    "rosewater": "#f4dbd6",
-    "flamingo": "#f0c6c6",
-    "pink": "#f5bde6",
-    "mauve": "#c6a0f6",
-    "red": "#ed8796",
-    "maroon": "#ee99a0",
-    "peach": "#f5a97f",
-    "yellow": "#eed49f",
-    "green": "#a6da95",
-    "teal": "#8bd5ca",
-    "sky": "#91d7e3",
-    "sapphire": "#7dc4e4",
-    "blue": "#8aadf4",
-    "lavender": "#b7bdf8",
-    "text": "#cad3f5",
-    "subtext1": "#b8c0e0",
-    "subtext0": "#a5adcb",
-    "overlay2": "#939ab7",
-    "overlay1": "#8087a2",
-    "overlay0": "#6e738d",
-    "surface2": "#5b6078",
-    "surface1": "#494d64",
-    "surface0": "#363a4f",
-    "base": "#24273a",
-    "mantle": "#1e2030",
-    "crust": "#181926",
-}
-
-
-# Custom Toplevel class - simplified for better cross-platform compatibility
-# True rounded corners for Toplevel windows are complex and OS-dependent.
-# We'll achieve a "softer" look primarily through widget styling.
 class ThemedToplevel(tk.Toplevel):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
-        # Attempt to set background and a slight alpha for the window itself
-        self.configure(bg=CATPPUCCIN_PALETTE["crust"])
         try:
-            # Alpha for the window (if supported, e.g., on Windows/macOS)
-            self.attributes("-alpha", 0.98)
+            self.attributes("-alpha", 0.95)
         except tk.TclError:
-            pass  # Not supported on all systems/compositors
-
-
-class LoginDialog(ThemedToplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.title("SFTP Login")
-        self.result = None
-
-        # Apply theme colors
-        style = ttk.Style(self)
-        style.theme_use("alt")  # Using 'alt' for better control
-
-        # Configure styles for dialog widgets
-        style.configure(
-            "Dialog.TLabel",
-            background=CATPPUCCIN_PALETTE["crust"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            font=("Segoe UI", 10),
-        )
-        style.configure(
-            "Dialog.TEntry",
-            fieldbackground=CATPPUCCIN_PALETTE["surface0"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            insertcolor=CATPPUCCIN_PALETTE["blue"],
-            bordercolor=CATPPUCCIN_PALETTE["surface2"],
-            relief="flat",
-            borderwidth=1,
-            focusthickness=2,
-            focuscolor=CATPPUCCIN_PALETTE["blue"],
-            padding=(5, 5),
-            font=("Segoe UI", 10),
-        )
-        style.map(
-            "Dialog.TEntry",
-            fieldbackground=[("focus", CATPPUCCIN_PALETTE["surface1"])],
-            bordercolor=[("focus", CATPPUCCIN_PALETTE["blue"])],
-        )
-        style.configure(
-            "Dialog.TButton",
-            background=CATPPUCCIN_PALETTE["blue"],
-            foreground=CATPPUCCIN_PALETTE["base"],
-            font=("Segoe UI", 10, "bold"),
-            relief="flat",
-            padding=(10, 5),
-            bordercolor=CATPPUCCIN_PALETTE["blue"],
-            focusthickness=0,
-        )
-        style.map(
-            "Dialog.TButton",
-            background=[("active", CATPPUCCIN_PALETTE["lavender"])],
-            foreground=[("active", CATPPUCCIN_PALETTE["base"])],
-            relief=[("pressed", "sunken"), ("!pressed", "flat")],
-        )
-
-        # Main content frame for the dialog
-        # Apply padding and background to this frame to create a visual "rounded" inner look
-        content_frame = ttk.Frame(self, style="Dialog.TFrame")
-        content_frame.pack(padx=15, pady=15, fill=tk.BOTH, expand=True) # Padding within the toplevel window
-
-        # Make dialog modal
-        self.transient(parent)
-        self.grab_set()
-
-        # Create widgets inside content_frame
-        ttk.Label(content_frame, text="Hostname:", style="Dialog.TLabel").grid(
-            row=0, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Label(content_frame, text="Port:", style="Dialog.TLabel").grid(
-            row=1, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Label(content_frame, text="Username:", style="Dialog.TLabel").grid(
-            row=2, column=0, padx=5, pady=5, sticky="w"
-        )
-        ttk.Label(content_frame, text="Password:", style="Dialog.TLabel").grid(
-            row=3, column=0, padx=5, pady=5, sticky="w"
-        )
-
-        self.hostname = ttk.Entry(content_frame, width=30, style="Dialog.TEntry")
-        self.port = ttk.Entry(content_frame, width=30, style="Dialog.TEntry")
-        self.username = ttk.Entry(content_frame, width=30, style="Dialog.TEntry")
-        self.password = ttk.Entry(content_frame, show="*", width=30, style="Dialog.TEntry")
-
-        self.hostname.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        self.port.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-        self.username.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-        self.password.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
-        content_frame.grid_columnconfigure(1, weight=1)
-
-        self.port.insert(0, "22")
-
-        ttk.Button(content_frame, text="Connect", command=self.on_connect, style="Dialog.TButton").grid(
-            row=4, column=0, columnspan=2, pady=10
-        )
-
-        # Add Quick Connect URL field
-        ttk.Label(content_frame, text="Quick Connect URL:", style="Dialog.TLabel").grid(
-            row=5, column=0, padx=5, pady=5, sticky="w"
-        )
-        self.quick_connect_url = ttk.Entry(content_frame, width=40, style="Dialog.TEntry")
-        self.quick_connect_url.grid(row=5, column=1, padx=5, pady=5, sticky="ew")
-        ttk.Button(content_frame, text="Go", command=self.on_quick_connect, style="Dialog.TButton").grid(
-            row=6, column=0, columnspan=2, pady=5
-        )
-
-        # Add Enter key bindings
-        self.hostname.bind("<Return>", lambda e: self.port.focus())
-        self.port.bind("<Return>", lambda e: self.username.focus())
-        self.username.bind("<Return>", lambda e: self.password.focus())
-        self.password.bind("<Return>", lambda e: self.on_connect())
-        self.quick_connect_url.bind("<Return>", lambda e: self.on_quick_connect())
-
-        # Center the dialog
-        self.update_idletasks()  # Update geometry for winfo_width/height
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.winfo_width() // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
-        self.geometry(f"+{x}+{y}")
-
-    def on_connect(self):
-        self.result = {
-            "hostname": self.hostname.get(),
-            "port": int(self.port.get()),
-            "username": self.username.get(),
-            "password": self.password.get(),
-        }
-        self.destroy()
-
-    def on_quick_connect(self):
-        url = self.quick_connect_url.get()
-        if not url:
-            messagebox.showwarning("Input Error", "Please enter a Quick Connect URL.")
-            return
-
-        try:
-            parsed = urllib.parse.urlparse(url)
-            if parsed.scheme != "sftp":
-                raise ValueError("Not an SFTP URL")
-
-            username = urllib.parse.unquote(parsed.username or "")
-            password = urllib.parse.unquote(parsed.password or "")
-            hostname = parsed.hostname or ""
-            port = parsed.port or 22
-            path = parsed.path or "/"
-
-            self.result = {
-                "hostname": hostname,
-                "port": port,
-                "username": username,
-                "password": password,
-                "path": path,
-            }
-            self.destroy()
-
-        except Exception as e:
-            messagebox.showerror("URL Parsing Error", f"Invalid SFTP URL: {e}")
-            self.result = None
-
+            pass
 
 class SFTPBrowser:
     def __init__(self, root):
         self.root = root
-        self.root.title("A Very Simple SFTP Browser")
-        self.root.geometry("1000x700")  # Increased size for better layout
-        self.root.configure(bg=CATPPUCCIN_PALETTE["mantle"])
+        self.root.title("SFTP Browser")
+        self.root.geometry("1400x900")
 
-        self.apply_catppuccin_theme()
+        # Apply Sun Valley theme
+        sv_ttk.set_theme("light")  # Start with light theme
 
         # SFTP client
         self.sftp = None
         self.transport = None
+        self.current_path = "/"
+        self.path_history = []
 
-        # Initialize downloads list (persistent across sessions)
+        # Progress tracking
+        self.current_operation = None
+        self.progress_var = tk.DoubleVar()
+        self.progress_text = tk.StringVar(value="Ready")
+
+        # Connection panel state
+        self.connection_expanded = True
+
+        # Downloads tracking
         self.downloads = []
+
+        # Directory download progress tracking
+        self.download_stats = {
+            'total_files': 0,
+            'downloaded_files': 0,
+            'total_size': 0,
+            'downloaded_size': 0
+        }
 
         # GUI elements
         self.setup_gui()
@@ -233,625 +62,1118 @@ class SFTPBrowser:
         # Register protocol handler
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # Don't show login dialog immediately
+        # Check for initial connection
         self.initial_connect()
 
-    def apply_catppuccin_theme(self):
-        style = ttk.Style(self.root)
-        style.theme_use("alt")  # 'alt' theme is generally good for customization
+    def setup_gui(self):
+        # Main container with Sun Valley spacing
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
-        # General background and foreground for certain elements
-        self.root.option_add("*TCombobox*Listbox.background", CATPPUCCIN_PALETTE["base"])
-        self.root.option_add("*TCombobox*Listbox.foreground", CATPPUCCIN_PALETTE["text"])
-        self.root.option_add("*TCombobox*Listbox.selectBackground", CATPPUCCIN_PALETTE["blue"])
-        self.root.option_add("*TCombobox*Listbox.selectForeground", CATPPUCCIN_PALETTE["base"])
+        # Main content area with sidebar
+        content_paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        content_paned.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        # PanedWindow
-        style.configure("TPanedwindow", background=CATPPUCCIN_PALETTE["crust"])
-        style.map("TPanedwindow", background=[("active", CATPPUCCIN_PALETTE["crust"])])
+        # Left side - File browser
+        browser_frame = ttk.Frame(content_paned)
+        content_paned.add(browser_frame, weight=3)
 
-        # Frames
-        style.configure("TFrame", background=CATPPUCCIN_PALETTE["mantle"])
-        style.configure("Dialog.TFrame", background=CATPPUCCIN_PALETTE["crust"]) # For LoginDialog content frame
+        # Right side - Downloads sidebar
+        sidebar_frame = ttk.Frame(content_paned)
+        content_paned.add(sidebar_frame, weight=1)
+        self.setup_sidebar(sidebar_frame)
+
+        # Navigation frame with integrated buttons
+        nav_frame = ttk.Frame(browser_frame)
+        nav_frame.pack(fill=tk.X, padx=8, pady=8)
+
+        # Back button
+        self.back_btn = ttk.Button(nav_frame, text="◀ Back", 
+                                 command=self.go_back, 
+                                 state=tk.DISABLED)
+        self.back_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        # Path label
+        self.path_label = ttk.Label(nav_frame, text="Not Connected", font=('Segoe UI', 10))
+        self.path_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Action buttons integrated into navigation
+        self.refresh_btn = ttk.Button(nav_frame, text="🔄 Refresh", 
+                                    command=self.refresh_directory, 
+                                    state=tk.DISABLED)
+        self.refresh_btn.pack(side=tk.RIGHT, padx=(4, 0))
+
+        self.download_btn = ttk.Button(nav_frame, text="⬇ Download Selected", 
+                                     command=self.download_selected, 
+                                     state=tk.DISABLED)
+        self.download_btn.pack(side=tk.RIGHT, padx=(0, 4))
+
+        # File browser
+        browser_container = ttk.Frame(browser_frame)
+        browser_container.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        self.tree = ttk.Treeview(browser_container, columns=("size", "modified", "permissions"), show="tree headings", selectmode="extended")
+        self.tree.heading("#0", text="Name", anchor="c")
+        self.tree.heading("size", text="Size", anchor="c")
+        self.tree.heading("modified", text="Modified", anchor="c")
+        self.tree.heading("permissions", text="Permissions", anchor="c")
+
+        self.tree.column("#0", width=300, anchor="w")
+        self.tree.column("size", width=100, anchor="c")
+        self.tree.column("modified", width=140, anchor="c")
+        self.tree.column("permissions", width=100, anchor="c")
+
+        # Scrollbars for treeview
+        tree_scroll_y = ttk.Scrollbar(browser_container, orient=tk.VERTICAL, command=self.tree.yview)
+        tree_scroll_x = ttk.Scrollbar(browser_container, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.tree.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
+
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        tree_scroll_y.grid(row=0, column=1, sticky="ns")
+        tree_scroll_x.grid(row=1, column=0, sticky="ew")
+
+        browser_container.grid_rowconfigure(0, weight=1)
+        browser_container.grid_columnconfigure(0, weight=1)
+
+        # Bind events
+        self.tree.bind("<Double-1>", self.on_double_click)
+        self.tree.bind("<Return>", self.on_double_click)
         
-        # Labels
-        style.configure(
-            "TLabel",
-            background=CATPPUCCIN_PALETTE["mantle"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            font=("Segoe UI", 10),
-        )
-        style.configure(
-            "Header.TLabel", # For "Downloaded Files" label
-            background=CATPPUCCIN_PALETTE["mantle"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            font=("Segoe UI", 12, "bold"),
-        )
+        # Add context menu for multi-select operations
+        self.browser_menu = tk.Menu(self.root, tearoff=0, font=('Segoe UI', 9))
+        self.browser_menu.add_command(label="Download Selected", command=self.download_selected)
+        self.browser_menu.add_separator()
+        self.browser_menu.add_command(label="Select All", command=self.select_all)
+        self.browser_menu.add_command(label="Clear Selection", command=self.clear_selection)
         
-        # Entries
-        style.configure(
-            "TEntry",
-            fieldbackground=CATPPUCCIN_PALETTE["surface0"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            insertcolor=CATPPUCCIN_PALETTE["blue"],
-            bordercolor=CATPPUCCIN_PALETTE["surface2"],
-            relief="flat",
-            borderwidth=1,
-            focusthickness=2,
-            focuscolor=CATPPUCCIN_PALETTE["blue"],
-            padding=(5, 5),
-            font=("Segoe UI", 10),
-        )
-        style.map(
-            "TEntry",
-            fieldbackground=[("focus", CATPPUCCIN_PALETTE["surface1"])],
-            bordercolor=[("focus", CATPPUCCIN_PALETTE["blue"])],
-        )
+        self.tree.bind("<Button-3>", self.show_browser_context_menu)
+        self.tree.bind("<Control-a>", self.select_all)
+        self.tree.bind("<Escape>", self.clear_selection)
 
-        # Buttons
-        style.configure(
-            "TButton",
-            background=CATPPUCCIN_PALETTE["blue"],
-            foreground=CATPPUCCIN_PALETTE["base"],
-            font=("Segoe UI", 10, "bold"),
-            relief="flat",
-            padding=(6, 4),
-            bordercolor=CATPPUCCIN_PALETTE["blue"],
-            focusthickness=0,
-        )
-        style.map(
-            "TButton",
-            background=[("active", CATPPUCCIN_PALETTE["lavender"])],
-            foreground=[("active", CATPPUCCIN_PALETTE["base"])],
-            relief=[("pressed", "sunken"), ("!pressed", "flat")],
-        )
+        # Bottom section - Connection panel
+        self.setup_connection_panel(main_frame)
 
-        # Treeview (main browser and downloads)
-        style.configure(
-            "Treeview",
-            background=CATPPUCCIN_PALETTE["surface0"],
-            foreground=CATPPUCCIN_PALETTE["text"],
-            fieldbackground=CATPPUCCIN_PALETTE["surface0"],
-            font=("Segoe UI", 10),
-            rowheight=25,
-            bordercolor=CATPPUCCIN_PALETTE["mantle"], # No visible border
-            relief="flat",
-        )
-        style.map(
-            "Treeview",
-            background=[("selected", CATPPUCCIN_PALETTE["blue"])],
-            foreground=[("selected", CATPPUCCIN_PALETTE["base"])],
-        )
-        style.configure(
-            "Treeview.Heading",
-            background=CATPPUCCIN_PALETTE["surface1"],
-            foreground=CATPPUCCIN_PALETTE["subtext1"],
-            font=("Segoe UI", 10, "bold"),
-            relief="flat",
-            padding=(5, 5),
-            bordercolor=CATPPUCCIN_PALETTE["mantle"], # No visible border
-        )
-        style.map(
-            "Treeview.Heading",
-            background=[("active", CATPPUCCIN_PALETTE["surface2"])],
-        )
+        # Progress bar section
+        progress_frame = ttk.Frame(main_frame)
+        progress_frame.pack(fill=tk.X)
 
-        # Custom Scrollbars (No arrows, minimal look)
-        # Re-layout the scrollbar to only include the trough and thumb
-        style.layout("Vertical.TScrollbar", [
-            ("Vertical.Scrollbar.trough", {
-                "sticky": "ns",
-                "children": [
-                    ("Vertical.Scrollbar.thumb", {"expand": 1, "sticky": "nswe"})
-                ]
-            })
-        ])
-        style.layout("Horizontal.TScrollbar", [
-            ("Horizontal.Scrollbar.trough", {
-                "sticky": "ew",
-                "children": [
-                    ("Horizontal.Scrollbar.thumb", {"expand": 1, "sticky": "nswe"})
-                ]
-            })
-        ])
+        progress_content = ttk.Frame(progress_frame)
+        progress_content.pack(fill=tk.X, padx=8, pady=6)
 
-        # Configure the scrollbar style
-        style.configure(
-            "TScrollbar",
-            background=CATPPUCCIN_PALETTE["crust"], # Background of the scrollbar widget area
-            troughcolor=CATPPUCCIN_PALETTE["surface0"], # The track itself
-            bordercolor=CATPPUCCIN_PALETTE["crust"],
-            relief="flat",
-            borderwidth=0,
-            arrowsize=0, # This hides default arrows if they were present in the layout
-        )
-        style.map(
-            "TScrollbar",
-            background=[("active", CATPPUCCIN_PALETTE["overlay1"])],
-        )
-        style.configure(
-            "TScrollbar.thumb",
-            background=CATPPUCCIN_PALETTE["surface2"],
-            bordercolor=CATPPUCCIN_PALETTE["surface2"],
-            relief="flat",
-        )
-        style.map(
-            "TScrollbar.thumb",
-            background=[("active", CATPPUCCIN_PALETTE["overlay2"])],
-        )
+        ttk.Label(progress_content, textvariable=self.progress_text, font=('Segoe UI', 9)).pack(side=tk.LEFT)
 
+        self.progress_bar = ttk.Progressbar(progress_content, variable=self.progress_var, mode='determinate')
+        self.progress_bar.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(8, 0))
+
+    def setup_sidebar(self, parent):
+        """Setup the downloads sidebar"""
+        # Header
+        header_frame = ttk.Frame(parent)
+        header_frame.pack(fill=tk.X, padx=6, pady=6)
+
+        ttk.Label(header_frame, text="Downloads", font=('Segoe UI', 12, 'bold')).pack(side=tk.LEFT)
+
+        self.clear_btn = ttk.Button(header_frame, text="🗑 Clear", 
+                                  command=self.clear_downloads)
+        self.clear_btn.pack(side=tk.RIGHT)
+
+        # Downloads list
+        downloads_container = ttk.Frame(parent)
+        downloads_container.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+
+        self.downloads_tree = ttk.Treeview(downloads_container, columns=("size",), show="tree headings", height=10)
+        self.downloads_tree.heading("#0", text="File", anchor="c")
+        self.downloads_tree.heading("size", text="Size", anchor="c")
+        
+        self.downloads_tree.column("#0", width=180, anchor="c")
+        self.downloads_tree.column("size", width=60, anchor="e")
+
+        # Scrollbar for downloads
+        downloads_scroll = ttk.Scrollbar(downloads_container, orient=tk.VERTICAL, command=self.downloads_tree.yview)
+        self.downloads_tree.configure(yscrollcommand=downloads_scroll.set)
+
+        self.downloads_tree.grid(row=0, column=0, sticky="nsew")
+        downloads_scroll.grid(row=0, column=1, sticky="ns")
+
+        downloads_container.grid_rowconfigure(0, weight=1)
+        downloads_container.grid_columnconfigure(0, weight=1)
+
+        # Bind double-click to open file
+        self.downloads_tree.bind("<Double-1>", self.open_downloaded_file)
+
+        # Context menu for downloads
+        self.downloads_menu = tk.Menu(self.root, tearoff=0, font=('Segoe UI', 9))
+        self.downloads_menu.add_command(label="Open File", command=self.open_downloaded_file)
+        self.downloads_menu.add_command(label="Show in Folder", command=self.show_in_folder)
+        self.downloads_menu.add_separator()
+        self.downloads_menu.add_command(label="Remove from List", command=self.remove_from_downloads)
+
+        self.downloads_tree.bind("<Button-3>", self.show_downloads_context_menu)
+
+    def setup_connection_panel(self, parent):
+        # Connection panel container
+        connection_container = ttk.Frame(parent)
+        connection_container.pack(fill=tk.X, pady=(0, 8))
+
+        # Header with toggle button
+        header_frame = ttk.Frame(connection_container)
+        header_frame.pack(fill=tk.X, padx=8, pady=6)
+
+        self.toggle_btn = ttk.Button(header_frame, text="▼ Connection", 
+                                   command=self.toggle_connection_panel)
+        self.toggle_btn.pack(side=tk.LEFT)
+
+        self.disconnect_btn = ttk.Button(header_frame, text="🔌 Disconnect", 
+                                       command=self.disconnect, 
+                                       state=tk.DISABLED)
+        self.disconnect_btn.pack(side=tk.RIGHT)
+
+        # Connection content (collapsible)
+        self.connection_content = ttk.Frame(connection_container)
+        
+        # Manual connection section
+        manual_frame = ttk.LabelFrame(self.connection_content, text="Manual Connection", padding=8)
+        manual_frame.pack(fill=tk.X, padx=8, pady=(0, 6))
+
+        # Grid layout for manual connection
+        ttk.Label(manual_frame, text="Host:", font=('Segoe UI', 8)).grid(row=0, column=0, sticky="w", padx=(0, 4), pady=2)
+        self.hostname_entry = ttk.Entry(manual_frame, width=20)
+        self.hostname_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6), pady=2)
+
+        ttk.Label(manual_frame, text="Port:", font=('Segoe UI', 8)).grid(row=0, column=2, sticky="w", padx=(0, 4), pady=2)
+        self.port_entry = ttk.Entry(manual_frame, width=6)
+        self.port_entry.grid(row=0, column=3, sticky="ew", padx=(0, 10), pady=2)
+        self.port_entry.insert(0, "22")
+
+        ttk.Label(manual_frame, text="User:", font=('Segoe UI', 8)).grid(row=1, column=0, sticky="w", padx=(0, 4), pady=2)
+        self.username_entry = ttk.Entry(manual_frame, width=20)
+        self.username_entry.grid(row=1, column=1, sticky="ew", padx=(0, 6), pady=2)
+
+        ttk.Label(manual_frame, text="Pass:", font=('Segoe UI', 8)).grid(row=1, column=2, sticky="w", padx=(0, 4), pady=2)
+        self.password_entry = ttk.Entry(manual_frame, show="*", width=20)
+        self.password_entry.grid(row=1, column=3, sticky="ew", pady=2)
+
+        self.connect_btn = ttk.Button(manual_frame, text="🔗 Connect", 
+                                    command=self.connect_manual_gui)
+        self.connect_btn.grid(row=2, column=0, columnspan=4, pady=6)
+
+        manual_frame.grid_columnconfigure(1, weight=1)
+        manual_frame.grid_columnconfigure(3, weight=1)
+
+        # Quick connect section
+        quick_frame = ttk.LabelFrame(self.connection_content, text="Quick Connect", padding=8)
+        quick_frame.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+        ttk.Label(quick_frame, text="SFTP URL:", font=('Segoe UI', 8)).pack(anchor="w", pady=(0, 2))
+        
+        url_frame = ttk.Frame(quick_frame)
+        url_frame.pack(fill=tk.X, pady=(0, 4))
+        
+        self.url_entry = ttk.Entry(url_frame, font=('Consolas', 10))
+        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        
+        self.go_btn = ttk.Button(url_frame, text="🚀 Go", 
+                               command=self.connect_url_gui)
+        self.go_btn.pack(side=tk.RIGHT)
+
+        ttk.Label(quick_frame, text="Format: sftp://user:pass@host:port/path", 
+                 font=('Segoe UI', 8)).pack(anchor="w")
+
+        # Bind Enter keys
+        self.hostname_entry.bind("<Return>", lambda e: self.port_entry.focus())
+        self.port_entry.bind("<Return>", lambda e: self.username_entry.focus())
+        self.username_entry.bind("<Return>", lambda e: self.password_entry.focus())
+        self.password_entry.bind("<Return>", lambda e: self.connect_manual_gui())
+        self.url_entry.bind("<Return>", lambda e: self.connect_url_gui())
+
+        # Show connection panel by default
+        self.show_connection_panel()
+
+    def toggle_connection_panel(self):
+        if self.connection_expanded:
+            self.hide_connection_panel()
+        else:
+            self.show_connection_panel()
+
+    def show_connection_panel(self):
+        self.connection_content.pack(fill=tk.X, padx=0, pady=(0, 8))
+        self.toggle_btn.config(text="▼ Connection")
+        self.connection_expanded = True
+
+    def hide_connection_panel(self):
+        self.connection_content.pack_forget()
+        self.toggle_btn.config(text="▶ Connection")
+        self.connection_expanded = False
+
+    def update_ui_state(self, connected=False):
+        """Update UI elements based on connection state"""
+        if connected:
+            # Enable browser controls
+            self.back_btn.config(state=tk.NORMAL)
+            self.refresh_btn.config(state=tk.NORMAL)
+            self.download_btn.config(state=tk.NORMAL)
+            self.disconnect_btn.config(state=tk.NORMAL)
+            
+            # Disable connection controls
+            self.connect_btn.config(state=tk.DISABLED)
+            self.go_btn.config(state=tk.DISABLED)
+            self.hostname_entry.config(state=tk.DISABLED)
+            self.port_entry.config(state=tk.DISABLED)
+            self.username_entry.config(state=tk.DISABLED)
+            self.password_entry.config(state=tk.DISABLED)
+            self.url_entry.config(state=tk.DISABLED)
+            
+            # Hide connection panel when connected
+            if self.connection_expanded:
+                self.hide_connection_panel()
+        else:
+            # Disable browser controls
+            self.back_btn.config(state=tk.DISABLED)
+            self.refresh_btn.config(state=tk.DISABLED)
+            self.download_btn.config(state=tk.DISABLED)
+            self.disconnect_btn.config(state=tk.DISABLED)
+            
+            # Enable connection controls
+            self.connect_btn.config(state=tk.NORMAL)
+            self.go_btn.config(state=tk.NORMAL)
+            self.hostname_entry.config(state=tk.NORMAL)
+            self.port_entry.config(state=tk.NORMAL)
+            self.username_entry.config(state=tk.NORMAL)
+            self.password_entry.config(state=tk.NORMAL)
+            self.url_entry.config(state=tk.NORMAL)
+            
+            # Show connection panel when disconnected
+            if not self.connection_expanded:
+                self.show_connection_panel()
+
+    def update_progress(self, value=0, text="Ready"):
+        """Update progress bar and status text"""
+        self.progress_var.set(value)
+        self.progress_text.set(text)
+        self.root.update_idletasks()
 
     def _clear_browser_state(self):
         """Clears the browser's view, path history, and closes the SFTP connection."""
         if self.sftp:
             try:
                 self.sftp.close()
-            except Exception as e:
-                print(f"Error closing SFTP client: {e}")
+            except Exception:
+                pass
             self.sftp = None
         if self.transport:
             try:
                 self.transport.close()
-            except Exception as e:
-                print(f"Error closing Paramiko transport: {e}")
+            except Exception:
+                pass
             self.transport = None
         
         self.current_path = "/"
         self.path_history = []
-        self.path_label.config(text=self.current_path)
+        self.path_label.config(text="Not Connected")
         
         for item in self.tree.get_children():
             self.tree.delete(item)
+        
+        self.update_ui_state(connected=False)
+        self.update_progress(0, "Disconnected")
 
-    def initial_connect(self):
-        # Check command line args first
-        if len(sys.argv) > 1:
-            self.connect_sftp(sys.argv[1])
-        else:
-            self.show_login_dialog()
+    def connect_manual_gui(self):
+        """Connect using manual entry fields"""
+        hostname = self.hostname_entry.get().strip()
+        port = self.port_entry.get().strip()
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get()
+
+        if not all([hostname, port, username, password]):
+            messagebox.showwarning("Input Error", "Please fill in all connection fields.")
+            return
+
+        try:
+            port = int(port)
+        except ValueError:
+            messagebox.showerror("Input Error", "Port must be a number.")
+            return
+
+        self.connect_manual(hostname, port, username, password)
+
+    def connect_url_gui(self):
+        """Connect using URL entry"""
+        url = self.url_entry.get().strip()
+        if not url:
+            messagebox.showwarning("Input Error", "Please enter an SFTP URL.")
+            return
+
+        self.connect_sftp(url)
+
+    def connect_manual(self, hostname, port, username, password, retry_count=0):
+        """Connect to SFTP server with manual credentials"""
+        self._clear_browser_state()
+        
+        def connect_thread():
+            try:
+                self.update_progress(25, f"Connecting to {hostname}...")
+                
+                self.transport = paramiko.Transport((hostname, port))
+                self.update_progress(50, "Authenticating...")
+                
+                self.transport.connect(username=username, password=password)
+                self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+                
+                self.update_progress(75, "Loading directory...")
+                self.current_path = "/"
+                
+                # Switch to main thread for UI updates
+                self.root.after(0, lambda: self.finish_connection())
+                
+            except paramiko.AuthenticationException:
+                self.root.after(0, lambda: self.handle_auth_error(hostname, port, username, retry_count))
+            except Exception as e:
+                self.root.after(0, lambda: self.handle_connection_error(str(e)))
+
+        threading.Thread(target=connect_thread, daemon=True).start()
+
+    def finish_connection(self):
+        """Finish connection setup in main thread"""
+        try:
+            self.load_directory()
+            self.update_ui_state(connected=True)
+            self.update_progress(100, f"Connected to {self.hostname_entry.get()}")
+            
+            # Clear password for security
+            self.password_entry.delete(0, tk.END)
+            
+        except Exception as e:
+            self.handle_connection_error(str(e))
+
+    def handle_auth_error(self, hostname, port, username, retry_count):
+        """Handle authentication errors"""
+        self._clear_browser_state()
+        if retry_count < 3:
+            retry = messagebox.askretrycancel(
+                "Authentication Failed",
+                "Invalid credentials. Would you like to try again?"
+            )
+            if retry:
+                self.password_entry.delete(0, tk.END)
+                self.password_entry.focus()
+                return
+        
+        messagebox.showerror("Authentication Failed", "Unable to authenticate with provided credentials.")
+        self.update_progress(0, "Authentication failed")
+
+    def handle_connection_error(self, error_msg):
+        """Handle general connection errors"""
+        self._clear_browser_state()
+        messagebox.showerror("Connection Error", f"Failed to connect: {error_msg}")
+        self.update_progress(0, "Connection failed")
 
     def connect_sftp(self, url, retry_count=0):
-        # Clear previous session data *before* attempting a new connection
-        self._clear_browser_state() 
+        """Connect using SFTP URL"""
+        self._clear_browser_state()
 
         try:
             parsed = urllib.parse.urlparse(url)
             if parsed.scheme != "sftp":
-                raise ValueError("Not an SFTP URL")
+                raise ValueError("URL must start with 'sftp://'")
 
-            # Parse credentials and host info
             username = urllib.parse.unquote(parsed.username or "")
             password = urllib.parse.unquote(parsed.password or "")
             hostname = parsed.hostname or ""
             port = parsed.port or 22
             path = parsed.path or "/"
 
-            # If password or username is missing, show login dialog with prefilled fields
-            # and the full URL for quick connect re-attempt.
-            if not username or not password:
-                self.show_login_dialog(
-                    hostname=hostname, port=port, username=username, path=path, initial_url=url
-                )
-                return
+            if not username or not password or not hostname:
+                raise ValueError("URL must include username, password, and hostname")
 
-            # Connect
-            self.transport = paramiko.Transport((hostname, port))
-            self.transport.connect(username=username, password=password)
-            self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+            # Fill in the manual fields for reference
+            self.hostname_entry.delete(0, tk.END)
+            self.hostname_entry.insert(0, hostname)
+            self.port_entry.delete(0, tk.END)
+            self.port_entry.insert(0, str(port))
+            self.username_entry.delete(0, tk.END)
+            self.username_entry.insert(0, username)
 
-            # Load initial directory
-            self.current_path = path
-            self.load_directory()
+            def connect_thread():
+                try:
+                    self.update_progress(25, f"Connecting to {hostname}...")
+                    
+                    self.transport = paramiko.Transport((hostname, port))
+                    self.update_progress(50, "Authenticating...")
+                    
+                    self.transport.connect(username=username, password=password)
+                    self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+                    
+                    self.update_progress(75, "Loading directory...")
+                    self.current_path = path
+                    
+                    self.root.after(0, lambda: self.finish_connection())
+                    
+                except paramiko.AuthenticationException:
+                    self.root.after(0, lambda: self.handle_auth_error(hostname, port, username, retry_count))
+                except Exception as e:
+                    self.root.after(0, lambda: self.handle_connection_error(str(e)))
 
-        except paramiko.AuthenticationException:
-            # Show login dialog with prefilled fields on auth failure
-            if retry_count < 3:
-                retry = messagebox.askretrycancel(
-                    "Authentication Failed",
-                    "Wrong password for provided URL. Would you like to try again?",
-                )
-                if retry:
-                    self.show_login_dialog(
-                        hostname=hostname,
-                        port=port,
-                        username=username,
-                        path=path,
-                        initial_url=url, # Pass the original URL for potential quick connect retry
-                        retry_count=retry_count + 1,
-                    )
-                else: # If retry cancelled, go to generic login
-                    self.show_login_dialog()
-            else:
-                messagebox.showerror(
-                    "Error",
-                    "Maximum password attempts exceeded. Please try again from the New Connection dialog.",
-                )
-                self.show_login_dialog()  # Fall back to generic login
+            threading.Thread(target=connect_thread, daemon=True).start()
+
         except Exception as e:
-            messagebox.showerror("Connection Error", str(e))
-            self.show_login_dialog()  # Fall back to generic login
+            messagebox.showerror("URL Error", f"Invalid SFTP URL: {e}")
+            self.update_progress(0, "Invalid URL")
 
-    def show_login_dialog(self, hostname="", port=22, username="", path="/", initial_url="", retry_count=0):
-        dialog = LoginDialog(self.root)
-        if hostname:
-            dialog.hostname.insert(0, hostname)
-        if port:
-            dialog.port.delete(0, tk.END)
-            dialog.port.insert(0, str(port))
-        if username:
-            dialog.username.insert(0, username)
-        if initial_url:  # Pre-fill quick connect URL if we are retrying
-            dialog.quick_connect_url.insert(0, initial_url)
-
-        self.root.wait_window(dialog)
-
-        if dialog.result:
-            # Clear previous session state *before* attempting new connection
-            self._clear_browser_state()
-
-            if "path" in dialog.result:  # Result from quick connect URL
-                # Reconstruct URL to include password if provided
-                url_to_connect = (
-                    f"sftp://{dialog.result['username']}"
-                    f"{':' + dialog.result['password'] if dialog.result['password'] else ''}"
-                    f"@{dialog.result['hostname']}:{dialog.result['port']}"
-                    f"{dialog.result['path']}"
-                )
-                self.connect_sftp(url_to_connect, retry_count=retry_count)
-            else:  # Result from manual entry
-                self.connect_manual(
-                    dialog.result["hostname"],
-                    dialog.result["port"],
-                    dialog.result["username"],
-                    dialog.result["password"],
-                    retry_count=retry_count,
-                )
-        elif retry_count > 0:  # If we cancelled a retry, ensure connection is cleared
-            self._clear_browser_state()
-
-    def setup_gui(self):
-        # Main container
-        main_container = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL, style="TPanedwindow")
-        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10) # Increased padding
-
-        # Left side (main browser)
-        left_frame = ttk.Frame(main_container, style="TFrame")
-        main_container.add(left_frame, weight=3)
-
-        # Navigation frame
-        nav_frame = ttk.Frame(left_frame, style="TFrame")
-        nav_frame.pack(fill=tk.X, padx=10, pady=5) # Increased padding
-
-        self.back_btn = ttk.Button(nav_frame, text="← Back", command=self.go_back)
-        self.back_btn.pack(side=tk.LEFT, padx=(0, 5))
-
-        self.path_label = ttk.Label(nav_frame, text="/", anchor="w")
-        self.path_label.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        ttk.Button(
-            nav_frame, text="New Connection", command=self.show_login_dialog
-        ).pack(side=tk.RIGHT, padx=(5, 0))
-
-        self.download_dir_btn = ttk.Button(
-            nav_frame, text="Download Directory", command=self.download_current_directory
-        )
-        self.download_dir_btn.pack(side=tk.RIGHT, padx=5)
-
-        # Main treeview
-        self.tree = ttk.Treeview(left_frame, columns=("size", "date"), style="Treeview")
-        self.tree.heading("#0", text="Name", anchor="w")
-        self.tree.heading("size", text="Size", anchor="w")
-        self.tree.heading("date", text="Date Modified", anchor="w")
-
-        # Set column widths (adjust as needed)
-        self.tree.column("#0", width=300, minwidth=150, stretch=tk.YES)
-        self.tree.column("size", width=120, minwidth=80, stretch=tk.NO)
-        self.tree.column("date", width=180, minwidth=100, stretch=tk.NO)
-        
-        # Add scrollbars for the main tree
-        tree_scroll_y = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=self.tree.yview, style="TScrollbar")
-        tree_scroll_x = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=self.tree.xview, style="TScrollbar")
-        self.tree.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
-
-        # Scrollbars will only appear when necessary due to Treeview's internal logic
-        tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=(0, 10))
-        tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X, padx=(10, 0), pady=(0, 10))
-        self.tree.pack(fill=tk.BOTH, expand=True, padx=(10, 0), pady=(0, 0)) # Place tree after scrollbars for correct layout
-
-        # Right side (downloads sidebar)
-        right_frame = ttk.Frame(main_container, style="TFrame")
-        main_container.add(right_frame, weight=1)
-
-        # Downloads label
-        ttk.Label(right_frame, text="Downloaded Files", style="Header.TLabel").pack(
-            pady=10
-        )
-
-        # Downloads treeview
-        self.downloads_tree = ttk.Treeview(right_frame, columns=("local_path", "time"), style="Treeview")
-        self.downloads_tree.heading("#0", text="Remote Path", anchor="w")
-        self.downloads_tree.heading("local_path", text="Local Path", anchor="w")
-        self.downloads_tree.heading("time", text="Time", anchor="w")
-
-        # Set column widths for downloads tree
-        self.downloads_tree.column("#0", width=150, minwidth=100, stretch=tk.YES)
-        self.downloads_tree.column("local_path", width=150, minwidth=100, stretch=tk.YES)
-        self.downloads_tree.column("time", width=80, minwidth=60, stretch=tk.NO)
-        
-        # Add scrollbars for downloads tree
-        downloads_tree_scroll_y = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=self.downloads_tree.yview, style="TScrollbar")
-        downloads_tree_scroll_x = ttk.Scrollbar(right_frame, orient=tk.HORIZONTAL, command=self.downloads_tree.xview, style="TScrollbar")
-        self.downloads_tree.configure(yscrollcommand=downloads_tree_scroll_y.set, xscrollcommand=downloads_tree_scroll_x.set)
-        
-        # Scrollbars will only appear when necessary
-        downloads_tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=(0, 10))
-        downloads_tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X, padx=(10, 0), pady=(0, 10))
-        self.downloads_tree.pack(fill=tk.BOTH, expand=True, padx=(10, 0), pady=(0, 0)) # Place tree after scrollbars
-
-        # Buttons for downloaded files
-        btn_frame = ttk.Frame(right_frame, style="TFrame")
-        btn_frame.pack(fill=tk.X, padx=10, pady=5)
-
-        ttk.Button(btn_frame, text="Open File", command=self.open_selected_file).pack(
-            side=tk.LEFT, padx=(0, 2), expand=True, fill=tk.X
-        )
-        ttk.Button(
-            btn_frame, text="Open Folder", command=self.open_containing_folder
-        ).pack(side=tk.LEFT, padx=(2, 0), expand=True, fill=tk.X)
-
-        self.current_path = "/"
-        self.path_history = []
-
-    def connect_manual(self, hostname, port, username, password, retry_count=0):
-        # Clear previous session data *before* attempting a new connection
+    def disconnect(self):
+        """Disconnect from SFTP server"""
         self._clear_browser_state()
+        
+        # Clear connection fields
+        self.hostname_entry.delete(0, tk.END)
+        self.port_entry.delete(0, tk.END)
+        self.port_entry.insert(0, "22")
+        self.username_entry.delete(0, tk.END)
+        self.password_entry.delete(0, tk.END)
+        self.url_entry.delete(0, tk.END)
 
-        try:
-            self.transport = paramiko.Transport((hostname, port))
-            self.transport.connect(username=username, password=password)
-            self.sftp = paramiko.SFTPClient.from_transport(self.transport)
-            self.current_path = "/"
-            self.path_history = []
-            self.load_directory()
-        except paramiko.AuthenticationException:
-            if retry_count < 3:  # Allow 3 password attempts
-                retry = messagebox.askretrycancel(
-                    "Authentication Failed",
-                    "Wrong password. Would you like to try again?",
-                )
-                if retry:
-                    dialog = LoginDialog(self.root)
-                    dialog.hostname.insert(0, hostname)
-                    dialog.port.delete(0, tk.END)
-                    dialog.port.insert(0, str(port))
-                    dialog.username.insert(0, username)
-                    self.root.wait_window(dialog)
-                    if dialog.result:
-                        # Ensure to clear previous session state before new connection attempt
-                        self._clear_browser_state()
-                        if "path" in dialog.result:  # If they tried quick connect during retry
-                            self.connect_sftp(
-                                f"sftp://{dialog.result['username']}:{dialog.result['password']}@"
-                                f"{dialog.result['hostname']}:{dialog.result['port']}{dialog.result['path']}",
-                                retry_count=retry_count + 1,
-                            )
-                        else:  # Regular manual retry
-                            self.connect_manual(
-                                dialog.result["hostname"],
-                                dialog.result["port"],
-                                dialog.result["username"],
-                                dialog.result["password"],
-                                retry_count=retry_count + 1,
-                            )
-                else: # If retry cancelled, clear state and return
-                    self._clear_browser_state()
-            else:
-                messagebox.showerror(
-                    "Error",
-                    "Maximum password attempts exceeded. Please try again from the New Connection dialog.",
-                )
-                self._clear_browser_state() # Clear connection state
-
-        except Exception as e:
-            messagebox.showerror("Connection Error", str(e))
-            self._clear_browser_state() # Clear connection state
+    def normalize_path(self, *parts):
+        """Properly normalize SFTP paths"""
+        # Join parts and convert backslashes to forward slashes
+        path = "/".join(str(part) for part in parts if part)
+        
+        # Replace multiple slashes with single slash
+        while "//" in path:
+            path = path.replace("//", "/")
+        
+        # Ensure it starts with /
+        if not path.startswith("/"):
+            path = "/" + path
+            
+        return path
 
     def load_directory(self):
+        """Load directory contents"""
         if not self.sftp:
-            # Only show error if it's not during an intentional clear_browser_state (i.e., current_path is not '/')
-            if self.current_path != "/":
-                messagebox.showerror("Error", "Not connected to SFTP server or connection lost.")
-            self._clear_browser_state() # Ensure consistent state
             return
 
-        # Clear existing items
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-
-        # Update path label
-        self.path_label.config(text=self.current_path)
-
-        # List directory contents
         try:
-            for entry in self.sftp.listdir_attr(self.current_path):
-                name = entry.filename
-                # Skip '.' and '..' for cleaner display, relying on back button for navigation
-                if name in (".", ".."):
-                    continue
+            # Clear current items
+            for item in self.tree.get_children():
+                self.tree.delete(item)
 
-                size = "Directory" if stat.S_ISDIR(entry.st_mode) else f"{entry.st_size:,} bytes"
+            # Update path display
+            self.path_label.config(text=self.current_path)
 
+            # List directory contents
+            items = self.sftp.listdir_attr(self.current_path)
+            
+            # Sort items: directories first, then files
+            items.sort(key=lambda x: (not stat.S_ISDIR(x.st_mode), x.filename.lower()))
+
+            for item in items:
+                is_dir = stat.S_ISDIR(item.st_mode)
+                icon = "📁" if is_dir else "📄"
+                
+                # Format size
+                if is_dir:
+                    size = "<DIR>"
+                else:
+                    size = self.format_size(item.st_size)
+                
                 # Format date
-                date_obj = datetime.datetime.fromtimestamp(entry.st_mtime)
-                date_str = date_obj.strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    modified = datetime.datetime.fromtimestamp(item.st_mtime).strftime("%Y-%m-%d %H:%M")
+                except (OSError, ValueError):
+                    modified = "Unknown"
+                
+                # Format permissions
+                permissions = stat.filemode(item.st_mode)
 
-                self.tree.insert("", "end", text=name, values=(size, date_str))
-        except IOError as e:
-            messagebox.showerror(
-                "SFTP Error", f"Cannot access directory {self.current_path}: {e}"
-            )
-            # Try to go back if current_path is invalid
-            self.go_back()
+                self.tree.insert("", tk.END, text=f"{icon} {item.filename}", 
+                                values=(size, modified, permissions))
+
         except Exception as e:
-            messagebox.showerror("Error", f"An unexpected error occurred: {e}")
-            self.go_back()
+            messagebox.showerror("Directory Error", f"Failed to load directory: {e}")
+
+    def format_size(self, size):
+        """Format file size in human readable format"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
+
+    def on_double_click(self, event=None):
+        """Handle double click on tree item"""
+        if not self.sftp:
+            return
+
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        item = selection[0]
+        item_text = self.tree.item(item, "text")
+        filename = item_text.split(" ", 1)[1]  # Remove icon
+
+        try:
+            # Get file attributes
+            item_path = self.normalize_path(self.current_path, filename)
+            attrs = self.sftp.stat(item_path)
+            
+            if stat.S_ISDIR(attrs.st_mode):
+                # It's a directory, navigate to it
+                self.navigate_to_directory(filename)
+            else:
+                # It's a file, download it
+                self.download_file(filename)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to access item: {e}")
+
+    def navigate_to_directory(self, dirname):
+        """Navigate to a directory"""
+        if not self.sftp:
+            return
+
+        try:
+            # Save current path to history
+            self.path_history.append(self.current_path)
+            
+            # Update current path
+            self.current_path = self.normalize_path(self.current_path, dirname)
+            
+            self.load_directory()
+            self.update_progress(0, f"Browsing: {self.current_path}")
+
+        except Exception as e:
+            # Restore previous path if navigation fails
+            if self.path_history:
+                self.current_path = self.path_history.pop()
+            messagebox.showerror("Navigation Error", f"Cannot access directory: {e}")
 
     def go_back(self):
-        if self.path_history:
-            self.current_path = self.path_history.pop()
-            self.load_directory()
-            self.path_label.config(text=self.current_path)
-        elif self.current_path != "/":  # If at root and no history, try to go up
-            parent_path = os.path.dirname(self.current_path)
-            if parent_path == "":  # Handle cases like /folder -> /
-                parent_path = "/"
-            if parent_path != self.current_path:  # Prevent infinite loop if already at actual root
-                self.current_path = parent_path
-                self.load_directory()
-                self.path_label.config(text=self.current_path)
-
-    def on_double_click(self, event):
-        item = self.tree.selection()
-        if not item:
+        """Go back to previous directory"""
+        if not self.sftp or not self.path_history:
             return
 
-        item = item[0]
-        filename = self.tree.item(item, "text")
+        self.current_path = self.path_history.pop()
+        self.load_directory()
+        self.update_progress(0, f"Browsing: {self.current_path}")
 
-        # Construct the new path, ensuring it's always an absolute path
-        if self.current_path == "/":
-            filepath = "/" + filename
-        else:
-            filepath = os.path.join(self.current_path, filename).replace("\\", "/")
-
-        try:
-            sftp_stat = self.sftp.stat(filepath)
-            # Check if it's a directory
-            if stat.S_ISDIR(sftp_stat.st_mode):
-                self.path_history.append(self.current_path)
-                self.current_path = filepath
-                self.load_directory()
-                self.path_label.config(text=self.current_path)
-            else:
-                self.download_file(filepath, filename)
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-    def add_to_downloads(self, remote_path, local_path):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        self.downloads.append((remote_path, local_path, timestamp))
-        self.downloads_tree.insert(
-            "", 0, text=remote_path, values=(local_path, timestamp)
-        )
-
-    def open_selected_file(self):
-        selection = self.downloads_tree.selection()
-        if not selection:
-            messagebox.showwarning("No Selection", "Please select a downloaded file to open.")
-            return
-
-        local_path = self.downloads_tree.item(selection[0])["values"][0]
-        try:
-            if sys.platform == "win32":
-                os.startfile(local_path)
-            elif sys.platform == "darwin":  # macOS
-                subprocess.run(["open", local_path])
-            else:  # Linux and other Unix-like systems
-                subprocess.run(["xdg-open", local_path])
-        except Exception as e:
-            messagebox.showerror("Error Opening File", f"Could not open file: {e}")
-
-    def open_containing_folder(self):
-        selection = self.downloads_tree.selection()
-        if not selection:
-            messagebox.showwarning(
-                "No Selection", "Please select a downloaded file to open its folder."
-            )
-            return
-
-        local_path = self.downloads_tree.item(selection[0])["values"][0]
-        folder_path = os.path.dirname(local_path)
-
-        if not os.path.exists(folder_path):
-            messagebox.showerror("Error", "Containing folder does not exist.")
-            return
-
-        try:
-            if sys.platform == "win32":
-                os.startfile(folder_path)
-            elif sys.platform == "darwin":  # macOS
-                subprocess.run(["open", folder_path])
-            else:  # Linux and other Unix-like systems
-                subprocess.run(["xdg-open", folder_path])
-        except Exception as e:
-            messagebox.showerror("Error Opening Folder", f"Could not open folder: {e}")
-
-    def download_file(self, filepath, filename):
-        save_path = filedialog.asksaveasfilename(
-            defaultextension="", initialfile=filename
-        )
-        if save_path:
-            try:
-                self.sftp.get(filepath, save_path)
-                self.add_to_downloads(filepath, save_path)
-                messagebox.showinfo("Success", "File downloaded successfully!")
-            except Exception as e:
-                messagebox.showerror("Download Error", str(e))
-
-    def download_current_directory(self):
+    def refresh_directory(self):
+        """Refresh current directory"""
         if not self.sftp:
-            messagebox.showerror("Error", "Not connected to SFTP server.")
+            return
+            
+        self.load_directory()
+        self.update_progress(0, f"Refreshed: {self.current_path}")
+
+    def show_browser_context_menu(self, event):
+        """Show context menu for browser items"""
+        # Select item under cursor if not already selected
+        item = self.tree.identify_row(event.y)
+        if item and item not in self.tree.selection():
+            self.tree.selection_set(item)
+        
+        # Update menu labels based on selection
+        selection_count = len(self.tree.selection())
+        if selection_count == 0:
+            self.browser_menu.entryconfig(0, label="Download Selected", state="disabled")
+        elif selection_count == 1:
+            self.browser_menu.entryconfig(0, label="Download Selected", state="normal")
+        else:
+            self.browser_menu.entryconfig(0, label=f"Download {selection_count} Items", state="normal")
+        
+        self.browser_menu.post(event.x_root, event.y_root)
+
+    def select_all(self, event=None):
+        """Select all items in the current directory"""
+        if not self.sftp:
+            return "break"  # Prevent default handling
+        
+        for child in self.tree.get_children():
+            self.tree.selection_add(child)
+        return "break"
+
+    def clear_selection(self, event=None):
+        """Clear all selections"""
+        self.tree.selection_remove(*self.tree.selection())
+        return "break"
+
+    def download_selected(self):
+        """Download selected files and directories"""
+        if not self.sftp:
             return
 
-        save_dir = filedialog.askdirectory(
-            title=f"Select Local Directory to Save '{os.path.basename(self.current_path)}'"
-        )
-        if save_dir:
-            try:
-                # Create a subdirectory within save_dir for the remote folder's contents
-                remote_folder_name = os.path.basename(self.current_path.rstrip("/"))
-                if not remote_folder_name:  # Handle root directory
-                    remote_folder_name = "SFTP_Root"
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("No Selection", "Please select files or directories to download.")
+            return
 
-                target_local_dir = os.path.join(save_dir, remote_folder_name)
+        # Choose local save location for all downloads
+        local_dir = filedialog.askdirectory(title="Choose directory to save downloads to...")
+        if not local_dir:
+            return
 
-                self.download_directory_recursive(self.current_path, target_local_dir)
-                messagebox.showinfo(
-                    "Success",
-                    f"Directory '{self.current_path}' downloaded successfully to '{target_local_dir}'!",
-                )
-            except Exception as e:
-                messagebox.showerror("Download Error", str(e))
+        # Process each selected item
+        for item in selection:
+            item_text = self.tree.item(item, "text")
+            filename = item_text.split(" ", 1)[1]  # Remove icon
+            
+            # Check if it is a directory
+            if item_text.startswith("📁"):
+                self.download_directory_to_path(filename, local_dir)
+            else:
+                self.download_file_to_path(filename, local_dir)
 
-    def download_directory_recursive(self, remote_dir, local_dir):
-        os.makedirs(local_dir, exist_ok=True)
-        for entry in self.sftp.listdir_attr(remote_dir):
-            filename = entry.filename
-            if filename in (".", ".."):
-                continue  # Skip current and parent directory entries
+    def download_file_to_path(self, filename, local_dir):
+        """Download a file to a specific local directory"""
+        if not self.sftp:
+            return
 
-            remote_path = os.path.join(remote_dir, filename).replace("\\", "/")
+        try:
+            # Construct remote path
+            remote_path = self.normalize_path(self.current_path, filename)
+            
+            # Create local file path
             local_path = os.path.join(local_dir, filename)
 
-            if stat.S_ISDIR(entry.st_mode):
-                self.download_directory_recursive(remote_path, local_path)
+            # Start download in separate thread
+            def download_thread():
+                try:
+                    # Get file size for progress tracking
+                    file_attrs = self.sftp.stat(remote_path)
+                    file_size = file_attrs.st_size
+                    
+                    self.root.after(0, lambda: self.update_progress(0, f"Downloading {filename}..."))
+                    
+                    def progress_callback(transferred, total):
+                        if total > 0:
+                            progress = (transferred / total) * 100
+                            self.root.after(0, lambda: self.update_progress(
+                                progress, 
+                                f"Downloading {filename}: {self.format_size(transferred)}/{self.format_size(total)}"
+                            ))
+
+                    # Download file with progress callback
+                    self.sftp.get(remote_path, local_path, callback=progress_callback)
+                    
+                    # Add to downloads list
+                    download_info = {
+                        "filename": filename,
+                        "local_path": local_path,
+                        "remote_path": remote_path,
+                        "size": file_size,
+                        "timestamp": datetime.datetime.now(),
+                        "is_directory": False
+                    }
+                    self.downloads.append(download_info)
+                    
+                    # Update downloads sidebar
+                    self.root.after(0, lambda: self.update_downloads_list())
+                    self.root.after(0, lambda: self.update_progress(100, f"Downloaded {filename} successfully"))
+                    
+                except Exception as e:
+                    self.root.after(0, lambda error=str(e): messagebox.showerror("Download Error", f"Failed to download file {filename}: {error}"))
+
+            threading.Thread(target=download_thread, daemon=True).start()
+
+        except Exception as e:
+            messagebox.showerror("Download Error", f"Failed to initiate download of {filename}: {e}")
+
+    def download_directory_to_path(self, dirname, local_dir):
+        """Download a directory to a specific local directory"""
+        if not self.sftp:
+            return
+
+        try:
+            # Create local directory path
+            local_path = os.path.join(local_dir, dirname)
+            os.makedirs(local_path, exist_ok=True)
+
+            # Remote directory path
+            remote_path = self.normalize_path(self.current_path, dirname)
+
+            # Start download in separate thread
+            def download_thread():
+                try:
+                    # First, scan the directory structure
+                    self.root.after(0, lambda: self.update_progress(5, f"Scanning directory {dirname}..."))
+                    
+                    total_files, total_size, file_list = self.scan_directory_structure(remote_path)
+                    
+                    # Initialize download stats
+                    self.download_stats = {
+                        "total_files": total_files,
+                        "downloaded_files": 0,
+                        "total_size": total_size,
+                        "downloaded_size": 0
+                    }
+                    
+                    self.root.after(0, lambda: self.update_progress(10, f"Found {total_files} files ({self.format_size(total_size)}) - Starting download..."))
+                    
+                    # Download the directory recursively
+                    self._download_directory_recursive(remote_path, local_path)
+                    
+                    # Add directory to downloads list
+                    download_info = {
+                        "filename": dirname,
+                        "local_path": local_path,
+                        "remote_path": remote_path,
+                        "size": total_size,
+                        "timestamp": datetime.datetime.now(),
+                        "is_directory": True
+                    }
+                    self.downloads.append(download_info)
+                    
+                    # Final UI updates
+                    self.root.after(0, lambda: self.update_downloads_list())
+                    self.root.after(0, lambda: self.update_progress(100, f"Downloaded directory {dirname} successfully ({total_files} files)"))
+                    
+                except Exception as e:
+                    self.root.after(0, lambda error=str(e): messagebox.showerror("Download Error", f"Failed to download directory {dirname}: {error}"))
+                    self.root.after(0, lambda: self.update_progress(0, "Download failed"))
+
+            threading.Thread(target=download_thread, daemon=True).start()
+
+        except Exception as e:
+            messagebox.showerror("Download Error", f"Failed to initiate directory download of {dirname}: {e}")
+
+    def scan_directory_structure(self, remote_path):
+        """Scan directory structure to get total files and size"""
+        total_files = 0
+        total_size = 0
+        file_list = []
+        
+        def scan_recursive(path):
+            nonlocal total_files, total_size
+            try:
+                items = self.sftp.listdir_attr(path)
+                for item in items:
+                    item_path = self.normalize_path(path, item.filename)
+                    
+                    if stat.S_ISDIR(item.st_mode):
+                        # It's a directory, scan recursively
+                        scan_recursive(item_path)
+                    else:
+                        # It's a file
+                        total_files += 1
+                        total_size += item.st_size
+                        file_list.append((item_path, item.st_size))
+            except Exception as e:
+                print(f"Error scanning {path}: {e}")
+        
+        scan_recursive(remote_path)
+        return total_files, total_size, file_list
+
+    def download_directory(self, dirname):
+        """Download an entire directory with improved progress tracking"""
+        if not self.sftp:
+            return
+
+        try:
+            # Choose local save location
+            local_dir = filedialog.askdirectory(title="Choose directory to save to...")
+            if not local_dir:
+                return
+
+            # Create local directory
+            local_path = os.path.join(local_dir, dirname)
+            os.makedirs(local_path, exist_ok=True)
+
+            # Remote directory path
+            remote_path = self.normalize_path(self.current_path, dirname)
+
+            # Start download in separate thread
+            def download_thread():
+                try:
+                    # First, scan the directory structure
+                    self.root.after(0, lambda: self.update_progress(5, f"Scanning directory {dirname}..."))
+                    
+                    total_files, total_size, file_list = self.scan_directory_structure(remote_path)
+                    
+                    # Initialize download stats
+                    self.download_stats = {
+                        'total_files': total_files,
+                        'downloaded_files': 0,
+                        'total_size': total_size,
+                        'downloaded_size': 0
+                    }
+                    
+                    self.root.after(0, lambda: self.update_progress(10, f"Found {total_files} files ({self.format_size(total_size)}) - Starting download..."))
+                    
+                    # Download the directory recursively
+                    self._download_directory_recursive(remote_path, local_path)
+                    
+                    # Add directory to downloads list
+                    download_info = {
+                        'filename': dirname,
+                        'local_path': local_path,
+                        'remote_path': remote_path,
+                        'size': total_size,
+                        'timestamp': datetime.datetime.now(),
+                        'is_directory': True
+                    }
+                    self.downloads.append(download_info)
+                    
+                    # Final UI updates
+                    self.root.after(0, lambda: self.update_downloads_list())
+                    self.root.after(0, lambda: self.update_progress(100, f"Downloaded directory {dirname} successfully ({total_files} files)"))
+                    self.root.after(0, lambda: messagebox.showinfo("Download Complete", 
+                        f"Directory saved to:\n{local_path}\n\nFiles downloaded: {total_files}\nTotal size: {self.format_size(total_size)}"))
+                    
+                    # Reset progress after a delay
+                    self.root.after(3000, lambda: self.update_progress(0, "Ready"))
+                    
+                except Exception as e:
+                    self.root.after(0, lambda error=str(e): messagebox.showerror("Download Error", f"Failed to download directory: {error}"))
+                    self.root.after(0, lambda: self.update_progress(0, "Download failed"))
+
+            threading.Thread(target=download_thread, daemon=True).start()
+
+        except Exception as e:
+            messagebox.showerror("Download Error", f"Failed to initiate directory download: {e}")
+
+    def _download_directory_recursive(self, remote_dir, local_dir):
+        """Recursively download directory contents with proper progress tracking"""
+        try:
+            # Ensure local directory exists
+            os.makedirs(local_dir, exist_ok=True)
+            
+            # List directory contents
+            items = self.sftp.listdir_attr(remote_dir)
+            
+            for item in items:
+                remote_item_path = self.normalize_path(remote_dir, item.filename)
+                local_item_path = os.path.join(local_dir, item.filename)
+                
+                if stat.S_ISDIR(item.st_mode):
+                    # It's a directory, create it locally and recurse
+                    os.makedirs(local_item_path, exist_ok=True)
+                    self._download_directory_recursive(remote_item_path, local_item_path)
+                else:
+                    # It's a file, download it
+                    try:
+                        def progress_callback(transferred, total):
+                            # Update stats
+                            if transferred == total:
+                                self.download_stats['downloaded_files'] += 1
+                                self.download_stats['downloaded_size'] += total
+                                
+                                # Update progress bar
+                                if self.download_stats['total_size'] > 0:
+                                    progress = (self.download_stats['downloaded_size'] / self.download_stats['total_size']) * 90 + 10
+                                else:
+                                    progress = 90
+                                
+                                files_progress = f"{self.download_stats['downloaded_files']}/{self.download_stats['total_files']}"
+                                size_progress = f"{self.format_size(self.download_stats['downloaded_size'])}/{self.format_size(self.download_stats['total_size'])}"
+                                
+                                self.root.after(0, lambda p=progress, fp=files_progress, sp=size_progress: 
+                                    self.update_progress(p, f"Downloading: {fp} files, {sp}"))
+                        
+                        # Download the file
+                        self.sftp.get(remote_item_path, local_item_path, callback=progress_callback)
+                        
+                    except Exception as e:
+                        print(f"Error downloading {remote_item_path}: {e}")
+                        # Continue with other files even if one fails
+                        
+        except Exception as e:
+            raise Exception(f"Error downloading directory {remote_dir}: {e}")
+
+    def download_file(self, filename):
+        """Download a file from the server"""
+        if not self.sftp:
+            return
+
+        try:
+            # Construct remote path
+            remote_path = self.normalize_path(self.current_path, filename)
+
+            # Choose local save location
+            local_path = filedialog.asksaveasfilename(
+                title="Save file as...",
+                initialfile=filename,
+                defaultextension=""
+            )
+            
+            if not local_path:
+                return
+
+            # Start download in separate thread
+            def download_thread():
+                try:
+                    # Get file size for progress tracking
+                    file_attrs = self.sftp.stat(remote_path)
+                    file_size = file_attrs.st_size
+                    
+                    self.root.after(0, lambda: self.update_progress(0, f"Downloading {filename}..."))
+                    
+                    def progress_callback(transferred, total):
+                        if total > 0:
+                            progress = (transferred / total) * 100
+                            self.root.after(0, lambda: self.update_progress(
+                                progress, 
+                                f"Downloading {filename}: {self.format_size(transferred)}/{self.format_size(total)}"
+                            ))
+
+                    # Download file with progress callback
+                    self.sftp.get(remote_path, local_path, callback=progress_callback)
+                    
+                    # Add to downloads list
+                    download_info = {
+                        'filename': filename,
+                        'local_path': local_path,
+                        'remote_path': remote_path,
+                        'size': file_size,
+                        'timestamp': datetime.datetime.now(),
+                        'is_directory': False
+                    }
+                    self.downloads.append(download_info)
+                    
+                    # Update downloads sidebar
+                    self.root.after(0, lambda: self.update_downloads_list())
+                    self.root.after(0, lambda: self.update_progress(100, f"Downloaded {filename} successfully"))
+                    self.root.after(0, lambda: messagebox.showinfo("Download Complete", f"File saved to:\n{local_path}"))
+                    
+                    # Reset progress after a delay
+                    self.root.after(3000, lambda: self.update_progress(0, "Ready"))
+                    
+                except Exception as e:
+                    self.root.after(0, lambda error=str(e): messagebox.showerror("Download Error", f"Failed to download file: {error}"))
+
+            threading.Thread(target=download_thread, daemon=True).start()
+
+        except Exception as e:
+            messagebox.showerror("Download Error", f"Failed to initiate download: {e}")
+
+    def update_downloads_list(self):
+        """Update the downloads list in sidebar"""
+        # Clear existing items
+        for item in self.downloads_tree.get_children():
+            self.downloads_tree.delete(item)
+
+        # Add downloads to the tree (most recent first)
+        for download in reversed(self.downloads):
+            # Get just the filename from the local path
+            if download.get('is_directory', False):
+                display_name = f"📁 {download['filename']}"
             else:
-                self.sftp.get(remote_path, local_path)
-                self.add_to_downloads(remote_path, local_path)
+                display_name = f"📄 {os.path.basename(download['local_path'])}"
+            
+            size_str = self.format_size(download['size'])
+            
+            # Check if file/directory still exists
+            if os.path.exists(download['local_path']):
+                icon = ""
+            else:
+                icon = "❌ "
+                display_name = icon + display_name
+            
+            self.downloads_tree.insert("", tk.END, text=display_name, values=(size_str,))
+
+    def clear_downloads(self):
+        """Clear downloads list"""
+        if messagebox.askyesno("Clear Downloads", "Remove all files from downloads list?"):
+            self.downloads.clear()
+            self.update_downloads_list()
+
+    def show_downloads_context_menu(self, event):
+        """Show context menu for downloads"""
+        item = self.downloads_tree.identify_row(event.y)
+        if item:
+            self.downloads_tree.selection_set(item)
+            self.downloads_menu.post(event.x_root, event.y_root)
+
+    def get_selected_download(self):
+        """Get the selected download item"""
+        selection = self.downloads_tree.selection()
+        if not selection:
+            return None
+        
+        # Get the index of the selected item (reversed order)
+        selected_index = len(self.downloads) - 1 - self.downloads_tree.index(selection[0])
+        
+        if 0 <= selected_index < len(self.downloads):
+            return self.downloads[selected_index]
+        return None
+
+    def open_downloaded_file(self, event=None):
+        """Open downloaded file with default application"""
+        download = self.get_selected_download()
+        if not download:
+            return
+
+        local_path = download['local_path']
+        
+        if os.path.exists(local_path):
+            try:
+                if platform.system() == 'Darwin':  # macOS
+                    subprocess.call(['open', local_path])
+                elif platform.system() == 'Windows':  # Windows
+                    os.startfile(local_path)
+                else:  # Linux
+                    subprocess.call(['xdg-open', local_path])
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open file: {e}")
+        else:
+            messagebox.showerror("File Not Found", f"The file no longer exists:\n{local_path}")
+
+    def show_in_folder(self):
+        """Show file in folder/finder"""
+        download = self.get_selected_download()
+        if not download:
+            return
+
+        local_path = download['local_path']
+        
+        if os.path.exists(local_path):
+            try:
+                folder_path = os.path.dirname(local_path)
+                if platform.system() == 'Darwin':  # macOS
+                    subprocess.call(['open', '-R', local_path])
+                elif platform.system() == 'Windows':  # Windows
+                    subprocess.call(['explorer', '/select,', local_path])
+                else:  # Linux
+                    subprocess.call(['xdg-open', folder_path])
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open folder: {e}")
+        else:
+            messagebox.showerror("File Not Found", f"The file no longer exists:\n{local_path}")
+
+    def remove_from_downloads(self):
+        """Remove selected item from downloads list"""
+        download = self.get_selected_download()
+        if not download:
+            return
+
+        self.downloads.remove(download)
+        self.update_downloads_list()
+
+    def initial_connect(self):
+        """Check for initial connection from command line"""
+        if len(sys.argv) > 1:
+            self.url_entry.insert(0, sys.argv[1])
+            self.connect_sftp(sys.argv[1])
+        else:
+            # Show connection panel by default when no connection
+            self.update_ui_state(connected=False)
 
     def on_closing(self):
+        """Handle application closing"""
         if self.sftp:
-            self.sftp.close()
+            try:
+                self.sftp.close()
+            except:
+                pass
         if self.transport:
-            self.transport.close()
+            try:
+                self.transport.close()
+            except:
+                pass
         self.root.destroy()
-
 
 def main():
     root = tk.Tk()
     app = SFTPBrowser(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
